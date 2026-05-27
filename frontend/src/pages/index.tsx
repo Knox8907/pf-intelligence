@@ -383,6 +383,7 @@ function DashboardInner() {
   const [feedSentiment, setFeedSentiment] = useState("");
   const [feedProvince,  setFeedProvince]  = useState("");
   const [feedIssue,     setFeedIssue]     = useState("");
+  const [feedSource,    setFeedSource]    = useState("");
   const [feedSearch,    setFeedSearch]    = useState("");
   const { data: posts, isLoading: postsLoading, error: postsError } = usePosts({
     limit: 50,
@@ -390,6 +391,7 @@ function DashboardInner() {
     sentiment: feedSentiment || undefined,
     province:  feedProvince  || undefined,
     issue:     feedIssue     || undefined,
+    source:    feedSource    || undefined,
   });
   const { data: polls, isLoading: pollsLoading, error: pollsError } = usePolls();
   const [exportLoading, setExportLoading] = useState(false);
@@ -402,6 +404,7 @@ function DashboardInner() {
       if (feedSentiment) params.set("sentiment", feedSentiment);
       if (feedProvince)  params.set("province",  feedProvince);
       if (feedIssue)     params.set("issue",      feedIssue);
+      if (feedSource)    params.set("source",     feedSource);
 
       const token = getToken();
       const res = await fetch(`/api/export/posts?${params}`, {
@@ -564,7 +567,7 @@ function DashboardInner() {
                 {exportLoading ? "Exporting…" : "Export CSV"}
               </button>
             </div>
-            <div className="flex gap-2 mb-4 flex-wrap">
+            <div className="flex gap-2 mb-3 flex-wrap">
               <input
                 type="text"
                 placeholder="Search mentions…"
@@ -572,7 +575,7 @@ function DashboardInner() {
                 onChange={e => setFeedSearch(e.target.value)}
                 className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]"
               />
-              <select value={feedPlatform} onChange={e => setFeedPlatform(e.target.value)}
+              <select value={feedPlatform} onChange={e => { setFeedPlatform(e.target.value); setFeedSource(""); }}
                 className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
                 <option value="">All platforms</option>
                 <option value="facebook">Facebook</option>
@@ -600,9 +603,28 @@ function DashboardInner() {
                   <option key={k} value={k}>{v}</option>
                 ))}
               </select>
-              {(feedPlatform || feedSentiment || feedProvince || feedIssue || feedSearch) && (
+              <select value={feedSource} onChange={e => { setFeedSource(e.target.value); setFeedPlatform(""); }}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">All sources</option>
+                <optgroup label="— Parties &amp; Politicians">
+                  {[
+                    "UPND", "Hakainde Hichilema", "Patriotic Front",
+                    "Brian Mundubile", "Makebi Zulu", "NRPUP",
+                    "Emmanuel Mwamba", "Miles Sampa", "Bowman Lusambo", "Given Lubinda",
+                  ].map(s => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
+                <optgroup label="— Media &amp; News">
+                  {[
+                    "Mwebantu", "Kalemba", "Zambian Watchdog", "Diggers News",
+                    "Daily Revelation", "Zambia Reports", "Lusaka Times",
+                    "The Mast Online", "ZNBC", "Zambian Observer", "Zambia Monitor",
+                    "Zambia Daily Mail",
+                  ].map(s => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
+              </select>
+              {(feedPlatform || feedSentiment || feedProvince || feedIssue || feedSource || feedSearch) && (
                 <button
-                  onClick={() => { setFeedPlatform(""); setFeedSentiment(""); setFeedProvince(""); setFeedIssue(""); setFeedSearch(""); }}
+                  onClick={() => { setFeedPlatform(""); setFeedSentiment(""); setFeedProvince(""); setFeedIssue(""); setFeedSource(""); setFeedSearch(""); }}
                   className="px-3 py-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors">
                   Clear
                 </button>

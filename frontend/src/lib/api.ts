@@ -46,6 +46,7 @@ export function usePosts(filters: {
   province?: string;
   platform?: string;
   sentiment?: string;
+  source?: string;
   limit?: number;
 } = {}) {
   const params = new URLSearchParams();
@@ -53,6 +54,7 @@ export function usePosts(filters: {
   if (filters.province)  params.set("province", filters.province);
   if (filters.platform)  params.set("platform", filters.platform);
   if (filters.sentiment) params.set("sentiment", filters.sentiment);
+  if (filters.source)    params.set("source", filters.source);
   params.set("limit", String(filters.limit || 20));
 
   return useSWR(`/api/posts?${params}`, fetcher, { refreshInterval: 30_000 });

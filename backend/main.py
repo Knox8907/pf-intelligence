@@ -254,6 +254,7 @@ async def get_posts(
     province: Optional[str] = None,
     platform: Optional[str] = None,
     sentiment: Optional[str] = None,
+    source: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_auth),
 ):
@@ -271,6 +272,8 @@ async def get_posts(
         query = query.where(Post.platform == platform)
     if sentiment:
         query = query.where(Sentiment.label == sentiment)
+    if source:
+        query = query.where(Post.source_name == source)
     if issue:
         # JSON array contains — works on PostgreSQL
         query = query.where(
@@ -409,6 +412,7 @@ async def export_posts(
     province: Optional[str] = None,
     platform: Optional[str] = None,
     sentiment: Optional[str] = None,
+    source: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(require_auth),
 ):
@@ -424,6 +428,8 @@ async def export_posts(
         query = query.where(Post.platform == platform)
     if sentiment:
         query = query.where(Sentiment.label == sentiment)
+    if source:
+        query = query.where(Post.source_name == source)
     if issue:
         query = query.where(Sentiment.issues_found.cast(str).contains(issue))
 
