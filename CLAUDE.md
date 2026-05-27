@@ -80,7 +80,20 @@ Sub-packages (`database/`, `nlp/`, `scrapers/`) each have `__init__.py`.
 PostgreSQL 16. SQLAlchemy async with `asyncpg`. Tables auto-created on startup via `init_db()`.
 Keyword seed data auto-inserted on first run.
 
-Alembic is configured (`alembic.ini`) but migrations not yet generated — use `alembic revision --autogenerate`.
+Alembic migrations live in `backend/database/migrations/`. Run from the `backend/` directory:
+
+```bash
+# Generate a migration after changing models (requires DB running)
+alembic revision --autogenerate -m "describe the change"
+
+# Apply all pending migrations
+alembic upgrade head
+
+# Roll back one migration
+alembic downgrade -1
+```
+
+`env.py` pulls `DATABASE_URL` from settings at runtime — the URL in `alembic.ini` is a placeholder.
 
 ## Environment variables (backend)
 

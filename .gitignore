@@ -23,7 +23,7 @@ frontend/node_modules/
 *.sqlite3
 
 # Alembic
-backend/alembic/versions/*.pyc
+backend/database/migrations/versions/*.pyc
 
 # OS
 .DS_Store
