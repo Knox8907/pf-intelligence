@@ -25,6 +25,22 @@ const ISSUE_DISPLAY: Record<string, string> = {
   kwacha: "Kwacha", fertiliser: "Fertiliser", education: "School/Medical",
 };
 
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="w-6 h-6 border-2 border-gray-700 border-t-red-500 rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function ApiError({ message }: { message: string }) {
+  return (
+    <div className="py-8 text-center text-sm text-red-400 bg-red-950/20 rounded-xl border border-red-900/40">
+      {message}
+    </div>
+  );
+}
+
 function CountdownTimer() {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -262,22 +278,22 @@ const STRATEGY_RECS = [
 
 export default function Dashboard() {
   const [tab, setTab] = useState("dashboard");
-  const { data: summary }   = useDashboardSummary();
-  const { data: issues }    = useIssueFrequency();
-  const { data: provinces } = useProvinceScores();
+  const { data: summary,   isLoading: summaryLoading,   error: summaryError   } = useDashboardSummary();
+  const { data: issues,    isLoading: issuesLoading,    error: issuesError    } = useIssueFrequency();
+  const { data: provinces, isLoading: provincesLoading, error: provincesError } = useProvinceScores();
   const [feedPlatform,  setFeedPlatform]  = useState("");
   const [feedSentiment, setFeedSentiment] = useState("");
   const [feedProvince,  setFeedProvince]  = useState("");
   const [feedIssue,     setFeedIssue]     = useState("");
   const [feedSearch,    setFeedSearch]    = useState("");
-  const { data: posts } = usePosts({
+  const { data: posts, isLoading: postsLoading, error: postsError } = usePosts({
     limit: 50,
     platform:  feedPlatform  || undefined,
     sentiment: feedSentiment || undefined,
     province:  feedProvince  || undefined,
     issue:     feedIssue     || undefined,
   });
-  const { data: polls }     = usePolls();
+  const { data: polls, isLoading: pollsLoading, error: pollsError } = usePolls();
   const [msgProvince, setMsgProvince] = useState("");
   const [msgIssue,    setMsgIssue]    = useState("");
   const [msgResult,   setMsgResult]   = useState("");
@@ -344,18 +360,21 @@ export default function Dashboard() {
         {tab === "dashboard" && (
           <>
             <CountdownTimer />
-            <div className="grid grid-cols-5 gap-3 mb-6">
-              <KpiCard label="Mentions tracked"   value={(summary?.total_mentions || 0).toLocaleString()} delta="↑ 23% this week" deltaUp />
-              <KpiCard label="Negative sentiment" value={`${summary?.negative_pct || 67}%`} delta="↑ 4pts vs last week" />
-              <KpiCard label="Top issue"          value="Mealie meal" delta="34% of all posts" />
-              <KpiCard label="Poll responses"     value={(summary?.poll_responses || 0).toLocaleString()} delta="↑ 312 today" deltaUp />
-              <KpiCard label="PF sentiment"       value="+42%" delta="Favourable on CoL" deltaUp />
-            </div>
+            {summaryError
+              ? <ApiError message="Could not load summary — is the API running?" />
+              : <div className="grid grid-cols-5 gap-3 mb-6">
+                  <KpiCard label="Mentions tracked"   value={summaryLoading ? "…" : (summary?.total_mentions || 0).toLocaleString()} delta="↑ 23% this week" deltaUp />
+                  <KpiCard label="Negative sentiment" value={summaryLoading ? "…" : `${summary?.negative_pct || 67}%`} delta="↑ 4pts vs last week" />
+                  <KpiCard label="Top issue"          value="Mealie meal" delta="34% of all posts" />
+                  <KpiCard label="Poll responses"     value={summaryLoading ? "…" : (summary?.poll_responses || 0).toLocaleString()} delta="↑ 312 today" deltaUp />
+                  <KpiCard label="PF sentiment"       value="+42%" delta="Favourable on CoL" deltaUp />
+                </div>
+            }
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
                 <h3 className="text-sm font-medium mb-4 text-gray-300">Top cost-of-living issues (% of posts)</h3>
-                <IssueBars data={issues || []} />
+                {issuesError ? <ApiError message="Failed to load issues." /> : issuesLoading ? <Spinner /> : <IssueBars data={issues || []} />}
               </div>
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
                 <h3 className="text-sm font-medium mb-4 text-gray-300">Public sentiment toward UPND government</h3>
@@ -382,7 +401,7 @@ export default function Dashboard() {
 
             <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
               <h3 className="text-sm font-medium mb-3 text-gray-300">Province-level grievance score (higher = more opportunity for PF)</h3>
-              <ProvinceGrid provinces={provinces || []} />
+              {provincesError ? <ApiError message="Failed to load province data." /> : provincesLoading ? <Spinner /> : <ProvinceGrid provinces={provinces || []} />}
               <p className="text-xs text-gray-600 mt-3">Darker = higher grievance. Based on social media volume and sentiment analysis.</p>
             </div>
           </>
@@ -436,14 +455,19 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
-            {(() => {
-              const filtered = (posts || []).filter(p =>
-                !feedSearch || p.content.toLowerCase().includes(feedSearch.toLowerCase())
-              );
-              return filtered.length > 0
-                ? <PostFeed posts={filtered} />
-                : <p className="text-sm text-gray-500 py-8 text-center">No posts match the current filters.</p>;
-            })()}
+            {postsError
+              ? <ApiError message="Failed to load posts — is the API running?" />
+              : postsLoading
+              ? <Spinner />
+              : (() => {
+                  const filtered = (posts || []).filter(p =>
+                    !feedSearch || p.content.toLowerCase().includes(feedSearch.toLowerCase())
+                  );
+                  return filtered.length > 0
+                    ? <PostFeed posts={filtered} />
+                    : <p className="text-sm text-gray-500 py-8 text-center">No posts match the current filters.</p>;
+                })()
+            }
           </>
         )}
 
@@ -452,7 +476,12 @@ export default function Dashboard() {
           <>
             <h2 className="text-lg font-semibold mb-1">Opinion polls</h2>
             <p className="text-sm text-gray-400 mb-5">Results update in real time. Your responses are anonymous.</p>
-            <PollSection polls={polls || []} />
+            {pollsError
+              ? <ApiError message="Failed to load polls — is the API running?" />
+              : pollsLoading
+              ? <Spinner />
+              : <PollSection polls={polls || []} />
+            }
           </>
         )}
 

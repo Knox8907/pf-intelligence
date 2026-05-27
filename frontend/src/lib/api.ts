@@ -1,10 +1,4 @@
-/**
- * SWR-based API hooks for the PF Intelligence Hub frontend.
- * Auto-refreshes every 60 seconds for live dashboard feel.
- */
 import useSWR from "swr";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -13,21 +7,15 @@ const fetcher = (url: string) =>
   });
 
 export function useDashboardSummary() {
-  return useSWR(`${API}/api/dashboard/summary`, fetcher, {
-    refreshInterval: 60_000,
-  });
+  return useSWR("/api/dashboard/summary", fetcher, { refreshInterval: 60_000 });
 }
 
 export function useIssueFrequency() {
-  return useSWR(`${API}/api/dashboard/issues`, fetcher, {
-    refreshInterval: 120_000,
-  });
+  return useSWR("/api/dashboard/issues", fetcher, { refreshInterval: 120_000 });
 }
 
 export function useProvinceScores() {
-  return useSWR(`${API}/api/dashboard/provinces`, fetcher, {
-    refreshInterval: 120_000,
-  });
+  return useSWR("/api/dashboard/provinces", fetcher, { refreshInterval: 120_000 });
 }
 
 export function usePosts(filters: {
@@ -44,15 +32,11 @@ export function usePosts(filters: {
   if (filters.sentiment) params.set("sentiment", filters.sentiment);
   params.set("limit", String(filters.limit || 20));
 
-  return useSWR(`${API}/api/posts?${params}`, fetcher, {
-    refreshInterval: 30_000,
-  });
+  return useSWR(`/api/posts?${params}`, fetcher, { refreshInterval: 30_000 });
 }
 
 export function usePolls() {
-  return useSWR(`${API}/api/polls`, fetcher, {
-    refreshInterval: 10_000,  // update frequently — live results
-  });
+  return useSWR("/api/polls", fetcher, { refreshInterval: 10_000 });
 }
 
 export async function submitPollResponse(payload: {
@@ -61,7 +45,7 @@ export async function submitPollResponse(payload: {
   province?: string;
   age_group?: string;
 }) {
-  const res = await fetch(`${API}/api/polls/respond`, {
+  const res = await fetch("/api/polls/respond", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
