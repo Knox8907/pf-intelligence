@@ -51,18 +51,24 @@ ISSUE_KEYWORDS = {
     "education":    ["school fees", "hospital fees", "drug shortage", "medicine", "clinic"],
 }
 
-# Provinces mentioned in text
+# Provinces mentioned in text.
+# ORDER MATTERS — more specific multi-word names must come before their substrings.
+# North-Western before Western (both contain "western"); Muchinga before Northern (chinsali).
 PROVINCE_KEYWORDS = {
-    "Lusaka":       ["lusaka", "chawama", "kanyama", "matero", "chongwe", "kafue"],
-    "Copperbelt":   ["copperbelt", "ndola", "kitwe", "chingola", "mufulira", "wusakile", "luanshya"],
-    "Eastern":      ["eastern", "chipata", "petauke", "lundazi", "katete"],
-    "Southern":     ["southern", "livingstone", "mazabuka", "choma", "monze", "gwembe"],
-    "Central":      ["central", "kabwe", "mkushi", "serenje", "mumbwa"],
-    "Western":      ["western", "mongu", "kaoma", "senanga", "kalabo"],
-    "Northern":     ["northern", "kasama", "mbala", "mporokoso", "chinsali"],
-    "Luapula":      ["luapula", "mansa", "kawambwa", "nchelenge", "samfya"],
-    "North-Western":["north-western", "solwezi", "kasempa", "mwinilunga", "zambezi"],
-    "Muchinga":     ["muchinga", "chinsali", "nakonde", "isoka", "mpika"],
+    "Lusaka":        ["lusaka", "chawama", "kanyama", "matero", "kabwata", "munali", "chongwe", "kafue"],
+    "Copperbelt":    ["copperbelt", "ndola", "kitwe", "chingola", "mufulira", "wusakile", "luanshya",
+                      "nchanga", "nkana", "chimwemwe"],
+    "Eastern":       ["eastern province", "chipata", "petauke", "lundazi", "katete", "nyimba"],
+    "Southern":      ["southern province", "livingstone", "mazabuka", "choma", "monze", "gwembe",
+                      "siavonga", "sinazongwe"],
+    "Central":       ["central province", "kabwe", "mkushi", "serenje", "mumbwa", "chibombo",
+                      "kapiri mposhi"],
+    "North-Western": ["north-western", "north western", "northwestern", "solwezi", "kasempa",
+                      "mwinilunga", "zambezi", "chavuma"],
+    "Western":       ["western province", "mongu", "kaoma", "senanga", "kalabo", "lukulu"],
+    "Muchinga":      ["muchinga", "chinsali", "nakonde", "isoka", "mpika", "shiwang'andu"],
+    "Northern":      ["northern province", "kasama", "mbala", "mporokoso", "luwingu", "mpulungu"],
+    "Luapula":       ["luapula", "mansa", "kawambwa", "nchelenge", "samfya"],
 }
 
 
