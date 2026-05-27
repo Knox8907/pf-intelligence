@@ -366,6 +366,37 @@ function DashboardInner() {
     issue:     feedIssue     || undefined,
   });
   const { data: polls, isLoading: pollsLoading, error: pollsError } = usePolls();
+  const [exportLoading, setExportLoading] = useState(false);
+
+  async function handleExport() {
+    setExportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (feedPlatform)  params.set("platform",  feedPlatform);
+      if (feedSentiment) params.set("sentiment", feedSentiment);
+      if (feedProvince)  params.set("province",  feedProvince);
+      if (feedIssue)     params.set("issue",      feedIssue);
+
+      const token = getToken();
+      const res = await fetch(`/api/export/posts?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Export failed");
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `pf_intel_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`Export error: ${e.message}`);
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
   const [msgProvince, setMsgProvince] = useState("");
   const [msgIssue,    setMsgIssue]    = useState("");
   const [msgResult,   setMsgResult]   = useState("");
@@ -491,7 +522,15 @@ function DashboardInner() {
         {/* SOCIAL FEED */}
         {tab === "social" && (
           <>
-            <h2 className="text-lg font-semibold mb-4">Social media intelligence feed</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Social media intelligence feed</h2>
+              <button
+                onClick={handleExport}
+                disabled={exportLoading}
+                className="px-3 py-1.5 text-xs font-medium bg-gray-800 hover:bg-gray-700 disabled:opacity-50 border border-gray-700 text-gray-300 rounded-lg transition-colors">
+                {exportLoading ? "Exporting…" : "Export CSV"}
+              </button>
+            </div>
             <div className="flex gap-2 mb-4 flex-wrap">
               <input
                 type="text"

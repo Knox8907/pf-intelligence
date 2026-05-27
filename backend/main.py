@@ -16,6 +16,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import hashlib
 import json
+import csv
+import io
 import anthropic
 
 from config import settings
@@ -397,6 +399,65 @@ async def poll_results(poll_id: int, db: AsyncSession = Depends(get_db)):
         ],
         "total": total,
     }
+
+
+# ── Data export ──────────────────────────────────────────────
+
+@app.get("/api/export/posts")
+async def export_posts(
+    issue: Optional[str] = None,
+    province: Optional[str] = None,
+    platform: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_auth),
+):
+    """Export all matching posts with sentiment as a CSV download."""
+    query = (
+        select(Post, Sentiment)
+        .join(Sentiment, Sentiment.post_id == Post.id, isouter=True)
+        .order_by(desc(Post.scraped_at))
+    )
+    if province:
+        query = query.where(Post.province == province)
+    if platform:
+        query = query.where(Post.platform == platform)
+    if sentiment:
+        query = query.where(Sentiment.label == sentiment)
+    if issue:
+        query = query.where(Sentiment.issues_found.cast(str).contains(issue))
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "id", "platform", "source_name", "province", "sentiment", "score",
+        "issues", "likes", "comments", "published_at", "scraped_at", "content",
+    ])
+    for post, sent in rows:
+        writer.writerow([
+            post.id,
+            post.platform,
+            post.source_name,
+            post.province or "",
+            sent.label if sent else "",
+            sent.score if sent else "",
+            "|".join(sent.issues_found or []) if sent else "",
+            post.likes,
+            post.comments,
+            post.published_at.isoformat() if post.published_at else "",
+            post.scraped_at.isoformat() if post.scraped_at else "",
+            post.content,
+        ])
+
+    filename = f"pf_intel_posts_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Campaign message generation ──────────────────────────────
