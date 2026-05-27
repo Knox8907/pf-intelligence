@@ -265,7 +265,18 @@ export default function Dashboard() {
   const { data: summary }   = useDashboardSummary();
   const { data: issues }    = useIssueFrequency();
   const { data: provinces } = useProvinceScores();
-  const { data: posts }     = usePosts({ limit: 20 });
+  const [feedPlatform,  setFeedPlatform]  = useState("");
+  const [feedSentiment, setFeedSentiment] = useState("");
+  const [feedProvince,  setFeedProvince]  = useState("");
+  const [feedIssue,     setFeedIssue]     = useState("");
+  const [feedSearch,    setFeedSearch]    = useState("");
+  const { data: posts } = usePosts({
+    limit: 50,
+    platform:  feedPlatform  || undefined,
+    sentiment: feedSentiment || undefined,
+    province:  feedProvince  || undefined,
+    issue:     feedIssue     || undefined,
+  });
   const { data: polls }     = usePolls();
   const [msgProvince, setMsgProvince] = useState("");
   const [msgIssue,    setMsgIssue]    = useState("");
@@ -382,14 +393,57 @@ export default function Dashboard() {
           <>
             <h2 className="text-lg font-semibold mb-4">Social media intelligence feed</h2>
             <div className="flex gap-2 mb-4 flex-wrap">
-              <input type="text" placeholder="Search mentions..." className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]" />
-              {["All platforms","Facebook","News sites"].map(p=>(
-                <select key={p} className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
-                  <option>{p}</option>
-                </select>
-              ))}
+              <input
+                type="text"
+                placeholder="Search mentions…"
+                value={feedSearch}
+                onChange={e => setFeedSearch(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]"
+              />
+              <select value={feedPlatform} onChange={e => setFeedPlatform(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">All platforms</option>
+                <option value="facebook">Facebook</option>
+                <option value="news">News sites</option>
+              </select>
+              <select value={feedSentiment} onChange={e => setFeedSentiment(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">All sentiment</option>
+                <option value="negative">Negative</option>
+                <option value="neutral">Neutral</option>
+                <option value="positive">Positive</option>
+              </select>
+              <select value={feedProvince} onChange={e => setFeedProvince(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">All provinces</option>
+                {["Lusaka","Copperbelt","Eastern","Southern","Central",
+                  "Western","Northern","Luapula","North-Western","Muchinga"].map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <select value={feedIssue} onChange={e => setFeedIssue(e.target.value)}
+                className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">All issues</option>
+                {Object.entries(ISSUE_DISPLAY).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+              {(feedPlatform || feedSentiment || feedProvince || feedIssue || feedSearch) && (
+                <button
+                  onClick={() => { setFeedPlatform(""); setFeedSentiment(""); setFeedProvince(""); setFeedIssue(""); setFeedSearch(""); }}
+                  className="px-3 py-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg hover:border-gray-500 transition-colors">
+                  Clear
+                </button>
+              )}
             </div>
-            <PostFeed posts={posts || []} />
+            {(() => {
+              const filtered = (posts || []).filter(p =>
+                !feedSearch || p.content.toLowerCase().includes(feedSearch.toLowerCase())
+              );
+              return filtered.length > 0
+                ? <PostFeed posts={filtered} />
+                : <p className="text-sm text-gray-500 py-8 text-center">No posts match the current filters.</p>;
+            })()}
           </>
         )}
 

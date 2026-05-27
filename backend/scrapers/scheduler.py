@@ -11,12 +11,12 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
-from .facebook_scraper import scrape_all_pages
-from .news_scraper import scrape_all_news
-from ..database.connection import AsyncSessionLocal
-from ..database.models import Post, Sentiment, ProvinceScore
-from ..nlp.sentiment import analyse_sentiment, compute_province_score
-from ..config import settings
+from scrapers.facebook_scraper import scrape_all_pages
+from scrapers.news_scraper import scrape_all_news
+from database.connection import AsyncSessionLocal
+from database.models import Post, Sentiment, ProvinceScore
+from nlp.sentiment import analyse_sentiment, compute_province_score
+from config import settings
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -92,7 +92,6 @@ async def run_scrape_cycle():
 async def update_province_scores():
     """Recalculate grievance scores for all 10 provinces."""
     from collections import defaultdict
-    from sqlalchemy import func
 
     provinces = [
         "Lusaka", "Copperbelt", "Eastern", "Southern", "Central",
