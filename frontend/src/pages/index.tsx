@@ -12,12 +12,13 @@ import { formatDistanceToNow, differenceInDays } from "date-fns";
 
 const ELECTION_DATE = new Date("2026-08-13T00:00:00");
 
-const PROVINCE_COLORS: Record<string, string> = {
-  Lusaka: "#c0392b", Copperbelt: "#e74c3c", Eastern: "#e74c3c",
-  Southern: "#e67e22", Central: "#e67e22", Western: "#e67e22",
-  Northern: "#f39c12", "North-Western": "#f1c40f", Luapula: "#f1c40f",
-  Muchinga: "#f1c40f",
-};
+function scoreColor(score: number): { bg: string; border: string; text: string } {
+  if (score >= 80) return { bg: "rgba(185,28,28,0.35)",  border: "rgba(239,68,68,0.5)",  text: "#fca5a5" };
+  if (score >= 65) return { bg: "rgba(194,65,12,0.30)",  border: "rgba(249,115,22,0.45)", text: "#fdba74" };
+  if (score >= 50) return { bg: "rgba(161,98,7,0.25)",   border: "rgba(234,179,8,0.40)",  text: "#fde047" };
+  if (score >= 35) return { bg: "rgba(21,128,61,0.20)",  border: "rgba(34,197,94,0.35)",  text: "#86efac" };
+  return               { bg: "rgba(55,65,81,0.40)",   border: "rgba(107,114,128,0.4)", text: "#9ca3af" };
+}
 
 const ISSUE_DISPLAY: Record<string, string> = {
   mealie_meal: "Mealie meal", fuel: "Fuel costs",
@@ -110,29 +111,38 @@ function CountdownTimer() {
   const secs = Math.floor((diff % 60000)    / 1000);
 
   return (
-    <div className="flex gap-3 mb-6">
-      {[["Days", days], ["Hours", hrs], ["Mins", mins], ["Secs", secs]].map(([l, v]) => (
-        <div key={l} className="bg-gray-900 rounded-lg px-4 py-2 text-center min-w-[60px]">
-          <div className="text-2xl font-bold text-white">{String(v).padStart(2,"0")}</div>
-          <div className="text-[10px] text-gray-400 uppercase tracking-widest">{l}</div>
+    <div className="mb-6">
+      <div className="flex items-end gap-3 mb-2">
+        <div className="bg-red-950/50 border border-red-700/60 rounded-xl px-5 py-3 text-center min-w-[90px]">
+          <div className="text-5xl font-black text-red-400 tabular-nums leading-none">{String(days).padStart(2,"0")}</div>
+          <div className="text-[10px] text-red-500 uppercase tracking-widest mt-1">Days</div>
         </div>
-      ))}
-      <div className="flex items-center ml-2 text-sm text-gray-400">
-        until 13 August 2026 election
+        <div className="text-red-700 text-3xl font-bold pb-3">:</div>
+        {[["Hrs", hrs], ["Min", mins], ["Sec", secs]].map(([l, v]) => (
+          <div key={l} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center min-w-[72px]">
+            <div className="text-3xl font-bold text-white tabular-nums leading-none">{String(v).padStart(2,"0")}</div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">{l}</div>
+          </div>
+        ))}
+        <div className="pb-3 ml-1">
+          <div className="text-sm font-medium text-gray-300">until election day</div>
+          <div className="text-xs text-gray-500">13 August 2026</div>
+        </div>
       </div>
     </div>
   );
 }
 
-function KpiCard({ label, value, delta, deltaUp }: {
-  label: string; value: string; delta?: string; deltaUp?: boolean;
+function KpiCard({ label, value, delta, deltaUp, accent }: {
+  label: string; value: string; delta?: string; deltaUp?: boolean; accent?: string;
 }) {
   return (
-    <div className="bg-gray-900 rounded-xl p-4">
-      <div className="text-xs text-gray-400 uppercase tracking-widest mb-1">{label}</div>
-      <div className="text-2xl font-bold text-white">{value}</div>
+    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 border-l-4"
+         style={{ borderLeftColor: accent || "#e63946" }}>
+      <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{label}</div>
+      <div className="text-3xl font-black text-white leading-none">{value}</div>
       {delta && (
-        <div className={`text-xs mt-1 ${deltaUp ? "text-green-400" : "text-red-400"}`}>
+        <div className={`text-xs mt-2 font-medium ${deltaUp ? "text-green-400" : "text-gray-500"}`}>
           {delta}
         </div>
       )}
@@ -165,13 +175,18 @@ function ProvinceGrid({ provinces }: { provinces: any[] }) {
   return (
     <div className="grid grid-cols-5 gap-2">
       {provinces.map((p) => {
-        const color = PROVINCE_COLORS[p.province] || "#888";
+        const { bg, border, text } = scoreColor(p.score);
         return (
           <div key={p.province}
-               className="rounded-lg p-2 text-center"
-               style={{ background: `${color}22`, border: `1px solid ${color}44` }}>
-            <div className="text-lg font-bold" style={{ color }}>{p.score}</div>
-            <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">{p.province}</div>
+               className="rounded-lg p-3 text-center"
+               style={{ background: bg, border: `1px solid ${border}` }}>
+            <div className="text-2xl font-black leading-none" style={{ color: text }}>{p.score}</div>
+            <div className="text-[10px] text-gray-400 mt-1 leading-tight">{p.province}</div>
+            {p.top_issue && (
+              <div className="text-[9px] mt-1 leading-tight" style={{ color: text, opacity: 0.7 }}>
+                {ISSUE_DISPLAY[p.top_issue] || p.top_issue}
+              </div>
+            )}
           </div>
         );
       })}
@@ -189,30 +204,41 @@ function PostFeed({ posts }: { posts: any[] }) {
   return (
     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
       {posts.map((post) => (
-        <div key={post.id} className="bg-gray-900 rounded-lg p-3 border border-gray-800">
+        <div key={post.id} className="bg-gray-900 rounded-lg p-4 border border-gray-800 hover:border-gray-700 transition-colors">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs text-gray-400">{post.source_name}</span>
+            <span className="text-[10px] font-medium uppercase tracking-widest px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">
+              {post.platform === "facebook" ? "FB" : post.platform === "news" ? "NEWS" : post.platform}
+            </span>
+            <span className="text-xs font-medium text-gray-300">{post.source_name}</span>
             {post.published_at && (
               <span className="text-xs text-gray-600">
                 · {formatDistanceToNow(new Date(post.published_at), { addSuffix: true })}
               </span>
             )}
             {post.sentiment && (
-              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${sentClass(post.sentiment)}`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border ml-auto ${sentClass(post.sentiment)}`}>
                 {post.sentiment}
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-300 leading-relaxed">{post.content}</p>
-          {post.issues?.length > 0 && (
-            <div className="flex gap-1 flex-wrap mt-2">
-              {post.issues.map((i: string) => (
-                <span key={i} className="text-[10px] bg-red-950 text-red-300 border border-red-900 px-2 py-0.5 rounded-full">
-                  #{ISSUE_DISPLAY[i] || i}
-                </span>
-              ))}
-            </div>
-          )}
+          <p className="text-sm text-gray-200 leading-relaxed">{post.content}</p>
+          <div className="flex items-center gap-4 mt-3">
+            {post.issues?.length > 0 && (
+              <div className="flex gap-1 flex-wrap flex-1">
+                {post.issues.map((i: string) => (
+                  <span key={i} className="text-[10px] bg-red-950/60 text-red-300 border border-red-900/60 px-2 py-0.5 rounded-full">
+                    #{ISSUE_DISPLAY[i] || i}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(post.likes > 0 || post.comments > 0) && (
+              <div className="flex gap-3 text-[10px] text-gray-600 shrink-0">
+                {post.likes > 0 && <span>♥ {post.likes.toLocaleString()}</span>}
+                {post.comments > 0 && <span>💬 {post.comments.toLocaleString()}</span>}
+              </div>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -475,11 +501,11 @@ function DashboardInner() {
             {summaryError
               ? <ApiError message="Could not load summary — is the API running?" />
               : <div className="grid grid-cols-5 gap-3 mb-6">
-                  <KpiCard label="Mentions tracked"   value={summaryLoading ? "…" : (summary?.total_mentions || 0).toLocaleString()} delta="↑ 23% this week" deltaUp />
-                  <KpiCard label="Negative sentiment" value={summaryLoading ? "…" : `${summary?.negative_pct || 67}%`} delta="↑ 4pts vs last week" />
-                  <KpiCard label="Top issue"          value="Mealie meal" delta="34% of all posts" />
-                  <KpiCard label="Poll responses"     value={summaryLoading ? "…" : (summary?.poll_responses || 0).toLocaleString()} delta="↑ 312 today" deltaUp />
-                  <KpiCard label="PF sentiment"       value="+42%" delta="Favourable on CoL" deltaUp />
+                  <KpiCard label="Mentions tracked"   value={summaryLoading ? "…" : (summary?.total_mentions || 0).toLocaleString()} delta="↑ 23% this week" deltaUp accent="#3b82f6" />
+                  <KpiCard label="Negative sentiment" value={summaryLoading ? "…" : `${(summary?.negative_pct ?? 67).toFixed(1)}%`} delta="↑ 4pts vs last week" accent="#e63946" />
+                  <KpiCard label="Top issue"          value={summaryLoading ? "…" : (ISSUE_DISPLAY[summary?.top_issue ?? "mealie_meal"] || "Mealie meal")} delta="Most mentioned" accent="#f59e0b" />
+                  <KpiCard label="Poll responses"     value={summaryLoading ? "…" : (summary?.poll_responses || 0).toLocaleString()} delta="↑ 312 today" deltaUp accent="#8b5cf6" />
+                  <KpiCard label="PF sentiment"       value="+42%" delta="Favourable on CoL" deltaUp accent="#16a34a" />
                 </div>
             }
 
@@ -490,24 +516,31 @@ function DashboardInner() {
               </div>
               <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
                 <h3 className="text-sm font-medium mb-4 text-gray-300">Public sentiment toward UPND government</h3>
-                <div className="flex items-center gap-4">
-                  <ResponsiveContainer width={120} height={120}>
-                    <PieChart>
-                      <Pie data={[{v:67},{v:24},{v:9}]} dataKey="v" innerRadius={35} outerRadius={55}>
-                        <Cell fill="#e63946"/><Cell fill="#6b7280"/><Cell fill="#16a34a"/>
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-2 text-sm">
-                    {[["#e63946","Negative","67%"],["#6b7280","Neutral","24%"],["#16a34a","Positive","9%"]].map(([c,l,v])=>(
-                      <div key={l} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background:c}}/>
-                        <span className="text-gray-400">{l}</span>
-                        <span className="font-medium ml-auto">{v}</span>
+                {summaryLoading ? <Spinner /> : (() => {
+                  const neg = summary?.negative_pct ?? 67;
+                  const pos = summary?.positive_pct ?? 9;
+                  const neu = summary?.neutral_pct ?? 24;
+                  return (
+                    <div className="flex items-center gap-4">
+                      <ResponsiveContainer width={120} height={120}>
+                        <PieChart>
+                          <Pie data={[{v:neg},{v:neu},{v:pos}]} dataKey="v" innerRadius={35} outerRadius={55} strokeWidth={0}>
+                            <Cell fill="#e63946"/><Cell fill="#4b5563"/><Cell fill="#16a34a"/>
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-2.5 text-sm flex-1">
+                        {([["#e63946","Negative",neg],["#4b5563","Neutral",neu],["#16a34a","Positive",pos]] as [string,string,number][]).map(([c,l,v])=>(
+                          <div key={l} className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:c}}/>
+                            <span className="text-gray-400">{l}</span>
+                            <span className="font-bold ml-auto">{v.toFixed(1)}%</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -610,11 +643,16 @@ function DashboardInner() {
           <>
             <h2 className="text-lg font-semibold mb-1">Strategic recommendations</h2>
             <p className="text-sm text-gray-400 mb-5">Generated from social media analysis and poll data.</p>
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3 mb-8">
               {STRATEGY_RECS.map((r, i) => (
-                <div key={i} className="border-l-4 border-red-600 bg-gray-900 rounded-r-xl px-4 py-3">
-                  <div className="text-sm font-medium text-white mb-1">{r.title}</div>
-                  <div className="text-sm text-gray-400 leading-relaxed">{r.body}</div>
+                <div key={i} className="flex gap-4 bg-gray-900 rounded-xl p-4 border border-gray-800 hover:border-gray-700 transition-colors">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-red-950 border border-red-800 flex items-center justify-center text-xs font-bold text-red-400 mt-0.5">
+                    {i + 1}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-white mb-1">{r.title}</div>
+                    <div className="text-sm text-gray-400 leading-relaxed">{r.body}</div>
+                  </div>
                 </div>
               ))}
             </div>
