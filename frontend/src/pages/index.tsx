@@ -580,7 +580,7 @@ function DashboardInner() {
               : postsLoading
               ? <Spinner />
               : (() => {
-                  const filtered = (posts || []).filter(p =>
+                  const filtered = (posts || []).filter((p: any) =>
                     !feedSearch || p.content.toLowerCase().includes(feedSearch.toLowerCase())
                   );
                   return filtered.length > 0
