@@ -25,6 +25,9 @@ frontend/node_modules/
 # Alembic
 backend/database/migrations/versions/*.pyc
 
+# SSL certificates (added on server, never committed)
+nginx/ssl/
+
 # OS
 .DS_Store
 Thumbs.db
