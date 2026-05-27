@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import {
   useDashboardSummary, useIssueFrequency, useProvinceScores,
-  usePosts, usePolls, submitPollResponse
+  usePosts, usePolls, submitPollResponse, login, getToken,
 } from "@/lib/api";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -24,6 +24,61 @@ const ISSUE_DISPLAY: Record<string, string> = {
   electricity: "ZESCO/Power", employment: "Unemployment",
   kwacha: "Kwacha", fertiliser: "Fertiliser", education: "School/Medical",
 };
+
+function LoginPage({ onAuth }: { onAuth: () => void }) {
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const token = await login(email, password);
+      localStorage.setItem("pf_token", token);
+      onAuth();
+    } catch {
+      setError("Invalid email or password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-3 mb-8 justify-center">
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center font-bold text-lg">PF</div>
+          <div>
+            <div className="font-semibold text-white">PF Intelligence Hub</div>
+            <div className="text-xs text-gray-500">Zambia 2026 · Internal access only</div>
+          </div>
+        </div>
+        <form onSubmit={handleSubmit} className="bg-gray-900 rounded-2xl p-6 border border-gray-800 space-y-4">
+          <h2 className="text-sm font-medium text-gray-300 mb-2">Sign in to continue</h2>
+          <input
+            type="email" placeholder="Email address" required autoFocus
+            value={email} onChange={e => setEmail(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-red-500"
+          />
+          <input
+            type="password" placeholder="Password" required
+            value={password} onChange={e => setPassword(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-red-500"
+          />
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <button
+            type="submit" disabled={loading}
+            className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function Spinner() {
   return (
@@ -277,6 +332,23 @@ const STRATEGY_RECS = [
 ];
 
 export default function Dashboard() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setAuthed(!!getToken());
+  }, []);
+
+  if (authed === null) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-gray-700 border-t-red-500 rounded-full animate-spin" />
+    </div>
+  );
+  if (!authed) return <LoginPage onAuth={() => setAuthed(true)} />;
+
+  return <DashboardInner />;
+}
+
+function DashboardInner() {
   const [tab, setTab] = useState("dashboard");
   const { data: summary,   isLoading: summaryLoading,   error: summaryError   } = useDashboardSummary();
   const { data: issues,    isLoading: issuesLoading,    error: issuesError    } = useIssueFrequency();
@@ -303,9 +375,13 @@ export default function Dashboard() {
     setMsgResult("");
     setMsgLoading(true);
     try {
+      const token = getToken();
       const res = await fetch("/api/generate-message", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ province: msgProvince, issue: msgIssue }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -341,7 +417,7 @@ export default function Dashboard() {
             <div className="text-[10px] text-gray-500">Zambia 2026 · Cost of Living Campaign</div>
           </div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-1">
           {TABS.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-1.5 rounded-lg text-sm transition-all
@@ -352,6 +428,11 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => { localStorage.removeItem("pf_token"); window.location.reload(); }}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+          Sign out
+        </button>
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-6">

@@ -1,10 +1,33 @@
 import useSWR from "swr";
 
-const fetcher = (url: string) =>
-  fetch(url).then((r) => {
+export function getToken(): string | null {
+  return typeof window !== "undefined" ? localStorage.getItem("pf_token") : null;
+}
+
+const fetcher = (url: string) => {
+  const token = getToken();
+  return fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then((r) => {
+    if (r.status === 401) {
+      localStorage.removeItem("pf_token");
+      window.location.reload();
+    }
     if (!r.ok) throw new Error(`API error: ${r.status}`);
     return r.json();
   });
+};
+
+export async function login(email: string, password: string): Promise<string> {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error("Invalid credentials");
+  const data = await res.json();
+  return data.access_token;
+}
 
 export function useDashboardSummary() {
   return useSWR("/api/dashboard/summary", fetcher, { refreshInterval: 60_000 });

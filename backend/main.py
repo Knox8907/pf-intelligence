@@ -5,12 +5,15 @@ Provides REST API for the Next.js frontend dashboard.
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from datetime import datetime, timedelta
 from collections import defaultdict
 from pydantic import BaseModel
 from typing import Optional
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 import hashlib
 import json
 import anthropic
@@ -38,6 +41,35 @@ async def startup():
     await init_db()
 
 
+# ── Auth ─────────────────────────────────────────────────────
+
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _create_token(email: str) -> str:
+    return jwt.encode(
+        {"sub": email, "exp": datetime.utcnow() + timedelta(hours=24)},
+        settings.SECRET_KEY,
+        algorithm="HS256",
+    )
+
+
+async def require_auth(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> str:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(credentials.credentials, settings.SECRET_KEY, algorithms=["HS256"])
+        email: str = payload.get("sub", "")
+        if not email:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
 # ── Pydantic schemas ────────────────────────────────────────
 
 class PollResponseCreate(BaseModel):
@@ -53,10 +85,24 @@ class MessageGenerateRequest(BaseModel):
     issue: str
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+# ── Auth endpoint ────────────────────────────────────────────
+
+@app.post("/api/auth/login")
+async def login(payload: LoginRequest):
+    if payload.email != settings.ADMIN_EMAIL or payload.password != settings.ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"access_token": _create_token(payload.email), "token_type": "bearer"}
+
+
 # ── Dashboard endpoints ──────────────────────────────────────
 
 @app.get("/api/dashboard/summary")
-async def dashboard_summary(db: AsyncSession = Depends(get_db)):
+async def dashboard_summary(db: AsyncSession = Depends(get_db), _: str = Depends(require_auth)):
     """Overall KPI summary for the dashboard hero row."""
     since = datetime.utcnow() - timedelta(days=7)
 
@@ -107,7 +153,7 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/dashboard/issues")
-async def issue_frequency(db: AsyncSession = Depends(get_db)):
+async def issue_frequency(db: AsyncSession = Depends(get_db), _: str = Depends(require_auth)):
     """Issue frequency breakdown for the bar chart."""
     since = datetime.utcnow() - timedelta(days=7)
 
@@ -156,7 +202,7 @@ async def issue_frequency(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/dashboard/provinces")
-async def province_scores(db: AsyncSession = Depends(get_db)):
+async def province_scores(db: AsyncSession = Depends(get_db), _: str = Depends(require_auth)):
     """Latest grievance score per province."""
     result = await db.execute(
         select(ProvinceScore)
@@ -207,6 +253,7 @@ async def get_posts(
     platform: Optional[str] = None,
     sentiment: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_auth),
 ):
     """Paginated post feed with optional filters."""
     query = (
@@ -375,7 +422,7 @@ End with a clear, concrete PF pledge. Write in a direct, accessible voice — no
 
 
 @app.post("/api/generate-message")
-async def generate_message(payload: MessageGenerateRequest):
+async def generate_message(payload: MessageGenerateRequest, _: str = Depends(require_auth)):
     if not settings.ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
