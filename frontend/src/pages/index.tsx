@@ -1,8 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   useDashboardSummary, useIssueFrequency, useProvinceScores,
   usePosts, usePolls, submitPollResponse, login, getToken,
+  useVoterRegisterSummary, useDistricts, useConstituencies,
+  useWards, usePollingStations, useTabulationOverview, submitTabulation,
 } from "@/lib/api";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -374,6 +376,502 @@ export default function Dashboard() {
   return <DashboardInner />;
 }
 
+// ── Vote Protection Tab ────────────────────────────────────────
+
+function StatBadge({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-1">
+      <div className="text-xs text-gray-500 uppercase tracking-widest">{label}</div>
+      <div className="text-2xl font-bold text-white tabular-nums">{typeof value === "number" ? value.toLocaleString() : value}</div>
+      {sub && <div className="text-xs text-gray-500">{sub}</div>}
+    </div>
+  );
+}
+
+function ProgressBar({ pct, color = "#ef4444" }: { pct: number; color?: string }) {
+  return (
+    <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
+    </div>
+  );
+}
+
+function TabulationModal({
+  station, onClose, onSubmitted,
+}: {
+  station: any;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const [votesCast,      setVotesCast]      = useState("");
+  const [pfVotes,        setPfVotes]        = useState("");
+  const [upndVotes,      setUpndVotes]      = useState("");
+  const [otherVotes,     setOtherVotes]     = useState("");
+  const [rejectedBallots,setRejectedBallots]= useState("");
+  const [agentName,      setAgentName]      = useState("");
+  const [notes,          setNotes]          = useState("");
+  const [submitting,     setSubmitting]     = useState(false);
+  const [result,         setResult]         = useState<any>(null);
+  const [error,          setError]          = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await submitTabulation({
+        polling_district_code: station.polling_district_code,
+        votes_cast:            parseInt(votesCast),
+        pf_votes:              pfVotes       ? parseInt(pfVotes)        : undefined,
+        upnd_votes:            upndVotes     ? parseInt(upndVotes)      : undefined,
+        other_votes:           otherVotes    ? parseInt(otherVotes)     : undefined,
+        rejected_ballots:      rejectedBallots ? parseInt(rejectedBallots) : undefined,
+        agent_name:            agentName     || undefined,
+        notes:                 notes         || undefined,
+      });
+      setResult(res);
+      onSubmitted();
+    } catch (err: any) {
+      setError(err.message || "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const numInput = (label: string, value: string, onChange: (v: string) => void, required = false) => (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}{required && " *"}</label>
+      <input type="number" min="0" required={required} value={value} onChange={e => onChange(e.target.value)}
+        className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-500" />
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-white">{station.polling_station}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{station.polling_district} · Registered: {station.total?.toLocaleString()}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-lg ml-4">✕</button>
+        </div>
+
+        {result ? (
+          <div className={`rounded-xl p-4 border ${result.discrepancy ? "bg-red-950/40 border-red-700" : "bg-green-950/40 border-green-700"}`}>
+            <p className={`font-semibold mb-1 ${result.discrepancy ? "text-red-400" : "text-green-400"}`}>
+              {result.discrepancy ? "⚠ DISCREPANCY FLAGGED" : "✓ Result Recorded"}
+            </p>
+            <p className="text-sm text-gray-300">{result.message}</p>
+            {result.discrepancy && (
+              <p className="text-xs text-red-400 mt-2">
+                Votes cast ({result.votes_cast?.toLocaleString()}) exceed registered voters ({result.registered?.toLocaleString()})
+              </p>
+            )}
+            <button onClick={onClose} className="mt-4 w-full py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {numInput("Total votes cast", votesCast, setVotesCast, true)}
+            <div className="grid grid-cols-3 gap-2">
+              {numInput("PF votes", pfVotes, setPfVotes)}
+              {numInput("UPND votes", upndVotes, setUpndVotes)}
+              {numInput("Other votes", otherVotes, setOtherVotes)}
+            </div>
+            {numInput("Rejected ballots", rejectedBallots, setRejectedBallots)}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">PF Agent name</label>
+              <input type="text" value={agentName} onChange={e => setAgentName(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-500" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Notes / observations</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-red-500" />
+            </div>
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <button type="submit" disabled={submitting || !votesCast}
+              className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+              {submitting ? "Submitting…" : "Submit result"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VoteProtectionTab() {
+  const { data: summary, isLoading: sumLoading } = useVoterRegisterSummary();
+  const { data: tabOverview } = useTabulationOverview();
+
+  const [selProvince,      setSelProvince]      = useState<any>(null);
+  const [selDistrict,      setSelDistrict]      = useState<any>(null);
+  const [selConstituency,  setSelConstituency]  = useState<any>(null);
+  const [selWard,          setSelWard]          = useState<any>(null);
+  const [tabulationStation,setTabulationStation]= useState<any>(null);
+  const [view, setView] = useState<"register"|"tabulation">("register");
+
+  const { data: districts }     = useDistricts(selProvince?.province_num ?? null);
+  const { data: constituencies } = useConstituencies(selDistrict?.district_code ?? null);
+  const { data: wards }          = useWards(selConstituency?.constituency_num ?? null);
+  const { data: pollingStations, mutate: refreshStations } = usePollingStations(selWard?.ward_code ?? null);
+
+  function resetBelow(level: "province"|"district"|"constituency"|"ward") {
+    if (level === "province")      { setSelDistrict(null); setSelConstituency(null); setSelWard(null); }
+    if (level === "district")      { setSelConstituency(null); setSelWard(null); }
+    if (level === "constituency")  { setSelWard(null); }
+  }
+
+  const national = summary?.national;
+  const tabData  = tabOverview?.overview;
+  const submitted = tabData?.total_submitted || 0;
+  const totalStations = tabOverview?.total_stations || national?.stations || 12933;
+  const coveragePct = totalStations > 0 ? (submitted / totalStations) * 100 : 0;
+
+  const breadcrumb = [
+    selProvince     && { label: selProvince.province_name,           onClick: () => { resetBelow("province"); setSelProvince(null); } },
+    selDistrict     && { label: selDistrict.district_name,           onClick: () => { resetBelow("district"); setSelDistrict(null); } },
+    selConstituency && { label: selConstituency.constituency_name,   onClick: () => { resetBelow("constituency"); setSelConstituency(null); } },
+    selWard         && { label: selWard.ward_name,                   onClick: () => setSelWard(null) },
+  ].filter(Boolean) as { label: string; onClick: () => void }[];
+
+  function rowClass(hasDiscrepancy: boolean) {
+    return hasDiscrepancy ? "bg-red-950/20 border-red-800/40 hover:bg-red-950/30" : "bg-gray-900/50 border-gray-800/50 hover:bg-gray-800/50";
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Vote Protection Dashboard</h2>
+          <p className="text-sm text-gray-400">ECZ official voter register · Zambia 2026 · Parallel tabulation</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setView("register")}
+            className={`px-4 py-1.5 rounded-lg text-sm transition-all ${view === "register" ? "bg-red-600/20 text-red-400 border border-red-600/30" : "text-gray-400 hover:text-white hover:bg-gray-800"}`}>
+            Voter Register
+          </button>
+          <button onClick={() => setView("tabulation")}
+            className={`px-4 py-1.5 rounded-lg text-sm transition-all ${view === "tabulation" ? "bg-red-600/20 text-red-400 border border-red-600/30" : "text-gray-400 hover:text-white hover:bg-gray-800"}`}>
+            Tabulation
+            {(tabOverview?.overview?.discrepancy_count || 0) > 0 && (
+              <span className="ml-1.5 bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                {tabOverview.overview.discrepancy_count}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* National KPI row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <StatBadge label="Total voters"   value={sumLoading ? "…" : (national?.total || 0).toLocaleString()}     sub="ECZ 2026 register" />
+        <StatBadge label="Female"         value={sumLoading ? "…" : (national?.female || 0).toLocaleString()}    sub={national ? `${((national.female/national.total)*100).toFixed(1)}%` : ""} />
+        <StatBadge label="Male"           value={sumLoading ? "…" : (national?.male || 0).toLocaleString()}      sub={national ? `${((national.male/national.total)*100).toFixed(1)}%` : ""} />
+        <StatBadge label="Provinces"      value="10"  sub="All covered" />
+        <StatBadge label="Polling stations" value={sumLoading ? "…" : (national?.stations || 0).toLocaleString()} sub="Across 13,529 ECZ" />
+        <StatBadge label="Results in"     value={submitted.toLocaleString()} sub={`of ${totalStations.toLocaleString()} stations`} />
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col gap-2">
+          <div className="text-xs text-gray-500 uppercase tracking-widest">Coverage</div>
+          <div className="text-2xl font-bold text-white">{coveragePct.toFixed(1)}%</div>
+          <ProgressBar pct={coveragePct} color={coveragePct >= 80 ? "#16a34a" : coveragePct >= 50 ? "#f59e0b" : "#ef4444"} />
+        </div>
+      </div>
+
+      {view === "register" && (
+        <>
+          {/* Breadcrumb */}
+          {breadcrumb.length > 0 && (
+            <div className="flex items-center gap-1 text-sm text-gray-400 flex-wrap">
+              <button onClick={() => { setSelProvince(null); resetBelow("province"); }} className="hover:text-white transition-colors">All Provinces</button>
+              {breadcrumb.map((b, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <span className="text-gray-600">/</span>
+                  <button onClick={b.onClick} className="hover:text-white transition-colors">{b.label}</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Level tables */}
+          {!selProvince && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-white">Provinces — registered voters</h3>
+                <span className="text-xs text-gray-500">Click a province to drill down</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 text-xs text-gray-500">
+                  <th className="text-left px-4 py-2">Province</th>
+                  <th className="text-right px-4 py-2">Male</th>
+                  <th className="text-right px-4 py-2">Female</th>
+                  <th className="text-right px-4 py-2">Total</th>
+                  <th className="text-right px-4 py-2">% Female</th>
+                  <th className="text-right px-4 py-2">Stations</th>
+                </tr></thead>
+                <tbody>
+                  {sumLoading ? (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500"><Spinner /></td></tr>
+                  ) : summary?.provinces?.map((p: any) => (
+                    <tr key={p.province_num} onClick={() => setSelProvince(p)}
+                      className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-white">{p.province_name}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{parseInt(p.male).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{parseInt(p.female).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-white tabular-nums">{parseInt(p.total).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{p.total > 0 ? ((p.female/p.total)*100).toFixed(1) : "0.0"}%</td>
+                      <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{parseInt(p.stations).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {summary?.provinces && (
+                  <tfoot><tr className="bg-gray-800/30 text-xs font-semibold text-gray-300">
+                    <td className="px-4 py-2">TOTAL</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{national?.male?.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{national?.female?.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{national?.total?.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{national ? ((national.female/national.total)*100).toFixed(1) : "0.0"}%</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{national?.stations?.toLocaleString()}</td>
+                  </tr></tfoot>
+                )}
+              </table>
+            </div>
+          )}
+
+          {selProvince && !selDistrict && (
+            <DrillTable
+              title={`Districts — ${selProvince.province_name}`}
+              data={districts}
+              keyField="district_code"
+              nameField="district_name"
+              onSelect={(row: any) => setSelDistrict(row)}
+            />
+          )}
+
+          {selDistrict && !selConstituency && (
+            <DrillTable
+              title={`Constituencies — ${selDistrict.district_name}`}
+              data={constituencies}
+              keyField="constituency_num"
+              nameField="constituency_name"
+              onSelect={(row: any) => setSelConstituency(row)}
+            />
+          )}
+
+          {selConstituency && !selWard && (
+            <DrillTable
+              title={`Wards — ${selConstituency.constituency_name}`}
+              data={wards}
+              keyField="ward_code"
+              nameField="ward_name"
+              onSelect={(row: any) => setSelWard(row)}
+            />
+          )}
+
+          {selWard && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-white">Polling Stations — {selWard.ward_name}</h3>
+                <span className="text-xs text-gray-500">Click a station to submit tabulation result</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 text-xs text-gray-500">
+                  <th className="text-left px-4 py-2">Polling Station</th>
+                  <th className="text-left px-4 py-2">District Code</th>
+                  <th className="text-right px-4 py-2">Male</th>
+                  <th className="text-right px-4 py-2">Female</th>
+                  <th className="text-right px-4 py-2">Registered</th>
+                  <th className="text-right px-4 py-2">Votes Cast</th>
+                  <th className="text-right px-4 py-2">Status</th>
+                </tr></thead>
+                <tbody>
+                  {!pollingStations ? (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center"><Spinner /></td></tr>
+                  ) : pollingStations.map((ps: any) => (
+                    <tr key={ps.polling_district_code}
+                      onClick={() => setTabulationStation(ps)}
+                      className={`border-b cursor-pointer transition-colors ${rowClass(ps.has_discrepancy)}`}>
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium text-white">{ps.polling_station}</div>
+                        <div className="text-xs text-gray-500">{ps.polling_district}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">{ps.polling_district_code}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{ps.male?.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{ps.female?.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-white tabular-nums">{ps.total?.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {ps.votes_cast != null ? (
+                          <span className={ps.has_discrepancy ? "text-red-400 font-semibold" : "text-green-400"}>
+                            {ps.votes_cast?.toLocaleString()}
+                          </span>
+                        ) : <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {ps.has_discrepancy
+                          ? <span className="text-[10px] bg-red-900/60 text-red-400 border border-red-700/50 px-2 py-0.5 rounded-full font-medium">⚠ DISCREPANCY</span>
+                          : ps.votes_cast != null
+                          ? <span className="text-[10px] bg-green-900/40 text-green-400 border border-green-700/40 px-2 py-0.5 rounded-full">Submitted</span>
+                          : <span className="text-[10px] bg-gray-800 text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">Pending</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === "tabulation" && (
+        <div className="space-y-5">
+          {/* Tabulation summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatBadge label="Results submitted"  value={(tabData?.total_submitted || 0).toLocaleString()}  sub={`of ${totalStations.toLocaleString()} stations`} />
+            <StatBadge label="Total votes cast"   value={(tabData?.total_votes_cast || 0).toLocaleString()} sub="parallel count" />
+            <StatBadge label="PF votes"           value={(tabData?.total_pf   || 0).toLocaleString()} />
+            <div className={`bg-gray-900 border rounded-xl p-4 flex flex-col gap-1 ${(tabData?.discrepancy_count || 0) > 0 ? "border-red-700/50" : "border-gray-800"}`}>
+              <div className="text-xs text-gray-500 uppercase tracking-widest">Discrepancies</div>
+              <div className={`text-2xl font-bold tabular-nums ${(tabData?.discrepancy_count || 0) > 0 ? "text-red-400" : "text-green-400"}`}>
+                {(tabData?.discrepancy_count || 0).toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500">stations exceed register</div>
+            </div>
+          </div>
+
+          {/* Coverage by province */}
+          {tabOverview?.by_province?.length > 0 && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-800">
+                <h3 className="text-sm font-medium text-white">Coverage by Province</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 text-xs text-gray-500">
+                  <th className="text-left px-4 py-2">Province</th>
+                  <th className="text-right px-4 py-2">Results In</th>
+                  <th className="text-right px-4 py-2">Flags</th>
+                </tr></thead>
+                <tbody>
+                  {tabOverview.by_province.map((p: any) => (
+                    <tr key={p.province_name} className="border-b border-gray-800/50">
+                      <td className="px-4 py-2 text-white">{p.province_name}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-300">{parseInt(p.submitted).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {parseInt(p.flags) > 0
+                          ? <span className="text-red-400 font-semibold">{p.flags}</span>
+                          : <span className="text-gray-600">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Discrepancy list */}
+          {tabOverview?.discrepancies?.length > 0 && (
+            <div className="bg-gray-900 rounded-xl border border-red-800/40 overflow-hidden">
+              <div className="px-4 py-3 border-b border-red-800/40 flex items-center gap-2">
+                <span className="text-red-400">⚠</span>
+                <h3 className="text-sm font-medium text-white">Discrepancy Alerts — Votes Exceed Registered Voters</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-800 text-xs text-gray-500">
+                  <th className="text-left px-4 py-2">Station</th>
+                  <th className="text-left px-4 py-2">Location</th>
+                  <th className="text-right px-4 py-2">Registered</th>
+                  <th className="text-right px-4 py-2">Votes Cast</th>
+                  <th className="text-right px-4 py-2">Excess</th>
+                  <th className="text-right px-4 py-2">Agent</th>
+                </tr></thead>
+                <tbody>
+                  {tabOverview.discrepancies.map((d: any) => (
+                    <tr key={d.polling_district_code} className="border-b border-gray-800/50 bg-red-950/10">
+                      <td className="px-4 py-2.5">
+                        <div className="text-white font-medium">{d.polling_station}</div>
+                        <div className="text-xs text-gray-500 font-mono">{d.polling_district_code}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-400 text-xs">
+                        {d.constituency_name}<br />{d.district_name} · {d.province_name}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-300">{parseInt(d.registered_voters).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-red-400 font-semibold">{parseInt(d.votes_cast).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-red-500 font-bold">+{parseInt(d.excess).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-400 text-xs">{d.agent_name || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {(!tabOverview?.discrepancies?.length && submitted === 0) && (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center text-gray-500">
+              <p className="text-lg mb-1">No results submitted yet</p>
+              <p className="text-sm">Switch to Voter Register view, drill down to a ward, and click a polling station to submit parallel tabulation results.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tabulationStation && (
+        <TabulationModal
+          station={tabulationStation}
+          onClose={() => setTabulationStation(null)}
+          onSubmitted={() => { setTabulationStation(null); refreshStations(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DrillTable({
+  title, data, keyField, nameField, onSelect,
+}: {
+  title: string;
+  data: any[] | undefined;
+  keyField: string;
+  nameField: string;
+  onSelect: (row: any) => void;
+}) {
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-white">{title}</h3>
+        <span className="text-xs text-gray-500">Click to drill down</span>
+      </div>
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-gray-800 text-xs text-gray-500">
+          <th className="text-left px-4 py-2">Name</th>
+          <th className="text-right px-4 py-2">Male</th>
+          <th className="text-right px-4 py-2">Female</th>
+          <th className="text-right px-4 py-2">Total</th>
+          <th className="text-right px-4 py-2">% Female</th>
+          <th className="text-right px-4 py-2">Stations</th>
+        </tr></thead>
+        <tbody>
+          {!data ? (
+            <tr><td colSpan={6} className="px-4 py-8 text-center"><Spinner /></td></tr>
+          ) : data.map((row: any) => (
+            <tr key={row[keyField]} onClick={() => onSelect(row)}
+              className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors">
+              <td className="px-4 py-2.5 font-medium text-white">{row[nameField]}</td>
+              <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{parseInt(row.male).toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-right text-gray-300 tabular-nums">{parseInt(row.female).toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-right font-semibold text-white tabular-nums">{parseInt(row.total).toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
+                {row.total > 0 ? ((parseInt(row.female)/parseInt(row.total))*100).toFixed(1) : "0.0"}%
+              </td>
+              <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{parseInt(row.stations).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DashboardInner() {
   const [tab, setTab] = useState("dashboard");
   const { data: summary,   isLoading: summaryLoading,   error: summaryError   } = useDashboardSummary();
@@ -460,10 +958,11 @@ function DashboardInner() {
   }
 
   const TABS = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "social",    label: "Social Feed" },
-    { id: "polls",     label: "Opinion Polls" },
-    { id: "strategy",  label: "Strategy" },
+    { id: "dashboard",  label: "Dashboard" },
+    { id: "social",     label: "Social Feed" },
+    { id: "polls",      label: "Opinion Polls" },
+    { id: "strategy",   label: "Strategy" },
+    { id: "protection", label: "Vote Protection" },
   ];
 
   return (
@@ -659,6 +1158,9 @@ function DashboardInner() {
             }
           </>
         )}
+
+        {/* VOTE PROTECTION */}
+        {tab === "protection" && <VoteProtectionTab />}
 
         {/* STRATEGY */}
         {tab === "strategy" && (

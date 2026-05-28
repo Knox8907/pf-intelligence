@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 from datetime import datetime, timedelta
 from collections import defaultdict
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ from config import settings
 from database.connection import get_db, init_db
 from database.models import (
     Post, Sentiment, Poll, PollOption, PollResponse,
-    ProvinceScore, SentimentLabel
+    ProvinceScore, SentimentLabel, VoterStation, TabulationResult
 )
 
 app = FastAPI(title="PF Intelligence Hub API", version="1.0.0")
@@ -520,6 +520,261 @@ async def generate_message(payload: MessageGenerateRequest, _: str = Depends(req
             yield f"\n[Error: {str(e)}]"
 
     return StreamingResponse(stream_text(), media_type="text/plain")
+
+
+# ── Vote Protection: Voter Register ──────────────────────────
+
+@app.get("/api/voter-register/summary")
+async def vr_summary(db: AsyncSession = Depends(get_db)):
+    """National totals and per-province breakdown."""
+    r = await db.execute(text("""
+        SELECT province_num, province_name,
+               COUNT(*)    AS stations,
+               SUM(male)   AS male,
+               SUM(female) AS female,
+               SUM(total)  AS total
+        FROM voter_register
+        GROUP BY province_num, province_name
+        ORDER BY province_num
+    """))
+    provinces = [dict(r) for r in r.mappings()]
+
+    national = {
+        "stations":  sum(p["stations"] for p in provinces),
+        "male":      sum(p["male"]     for p in provinces),
+        "female":    sum(p["female"]   for p in provinces),
+        "total":     sum(p["total"]    for p in provinces),
+    }
+
+    tab_r = await db.execute(text("""
+        SELECT COUNT(*) AS submitted,
+               SUM(CASE WHEN votes_cast > registered_voters THEN 1 ELSE 0 END) AS discrepancies
+        FROM tabulation_results
+    """))
+    tab = tab_r.mappings().one()
+
+    return {
+        "national":    national,
+        "provinces":   provinces,
+        "tabulation": {
+            "submitted":     int(tab["submitted"] or 0),
+            "total_stations": national["stations"],
+            "discrepancies": int(tab["discrepancies"] or 0),
+        },
+    }
+
+
+@app.get("/api/voter-register/districts")
+async def vr_districts(province_num: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(text("""
+        SELECT district_code, district_name,
+               COUNT(*)    AS stations,
+               SUM(male)   AS male,
+               SUM(female) AS female,
+               SUM(total)  AS total
+        FROM voter_register
+        WHERE province_num = :p
+        GROUP BY district_code, district_name
+        ORDER BY district_code
+    """), {"p": province_num})
+    return [dict(r) for r in r.mappings()]
+
+
+@app.get("/api/voter-register/constituencies")
+async def vr_constituencies(district_code: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(text("""
+        SELECT constituency_num, constituency_name,
+               COUNT(*)    AS stations,
+               SUM(male)   AS male,
+               SUM(female) AS female,
+               SUM(total)  AS total
+        FROM voter_register
+        WHERE district_code = :d
+        GROUP BY constituency_num, constituency_name
+        ORDER BY constituency_name
+    """), {"d": district_code})
+    return [dict(r) for r in r.mappings()]
+
+
+@app.get("/api/voter-register/wards")
+async def vr_wards(constituency_num: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(text("""
+        SELECT ward_code, ward_name,
+               COUNT(*)    AS stations,
+               SUM(male)   AS male,
+               SUM(female) AS female,
+               SUM(total)  AS total
+        FROM voter_register
+        WHERE constituency_num = :c
+        GROUP BY ward_code, ward_name
+        ORDER BY ward_name
+    """), {"c": constituency_num})
+    return [dict(r) for r in r.mappings()]
+
+
+@app.get("/api/voter-register/polling-stations")
+async def vr_polling_stations(ward_code: str, db: AsyncSession = Depends(get_db)):
+    r = await db.execute(text("""
+        SELECT vr.polling_district_code, vr.polling_district, vr.polling_station,
+               vr.male, vr.female, vr.total,
+               tr.votes_cast, tr.pf_votes, tr.upnd_votes, tr.other_votes,
+               tr.rejected_ballots, tr.agent_name, tr.submitted_at, tr.is_verified,
+               CASE WHEN tr.votes_cast IS NOT NULL AND tr.votes_cast > vr.total
+                    THEN true ELSE false END AS has_discrepancy
+        FROM voter_register vr
+        LEFT JOIN tabulation_results tr
+               ON tr.polling_district_code = vr.polling_district_code
+        WHERE vr.ward_code = :w
+        ORDER BY vr.polling_district
+    """), {"w": ward_code})
+    return [dict(r) for r in r.mappings()]
+
+
+# ── Vote Protection: Parallel Tabulation ─────────────────────
+
+class TabulationSubmit(BaseModel):
+    polling_district_code: str
+    votes_cast:            int
+    pf_votes:              Optional[int] = None
+    upnd_votes:            Optional[int] = None
+    other_votes:           Optional[int] = None
+    rejected_ballots:      Optional[int] = None
+    agent_name:            Optional[str] = None
+    notes:                 Optional[str] = None
+
+
+@app.post("/api/tabulation/submit")
+async def tabulation_submit(
+    payload: TabulationSubmit,
+    _: str = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    # Look up station in register
+    station_r = await db.execute(text("""
+        SELECT polling_station, ward_code, constituency_name,
+               district_name, province_name, total
+        FROM voter_register
+        WHERE polling_district_code = :code
+        LIMIT 1
+    """), {"code": payload.polling_district_code})
+    station = station_r.mappings().one_or_none()
+    if not station:
+        raise HTTPException(status_code=404, detail="Polling station not found in voter register")
+
+    discrepancy = payload.votes_cast > station["total"]
+
+    await db.execute(text("""
+        INSERT INTO tabulation_results
+            (polling_district_code, polling_station, ward_code, constituency_name,
+             district_name, province_name, registered_voters,
+             votes_cast, pf_votes, upnd_votes, other_votes, rejected_ballots,
+             agent_name, notes, submitted_at)
+        VALUES
+            (:code, :station, :ward, :constituency, :district, :province, :registered,
+             :votes_cast, :pf, :upnd, :other, :rejected,
+             :agent, :notes, NOW())
+        ON CONFLICT (polling_district_code) DO UPDATE SET
+            votes_cast       = EXCLUDED.votes_cast,
+            pf_votes         = EXCLUDED.pf_votes,
+            upnd_votes       = EXCLUDED.upnd_votes,
+            other_votes      = EXCLUDED.other_votes,
+            rejected_ballots = EXCLUDED.rejected_ballots,
+            agent_name       = EXCLUDED.agent_name,
+            notes            = EXCLUDED.notes,
+            submitted_at     = NOW(),
+            is_verified      = FALSE
+    """), {
+        "code":         payload.polling_district_code,
+        "station":      station["polling_station"],
+        "ward":         station["ward_code"],
+        "constituency": station["constituency_name"],
+        "district":     station["district_name"],
+        "province":     station["province_name"],
+        "registered":   station["total"],
+        "votes_cast":   payload.votes_cast,
+        "pf":           payload.pf_votes,
+        "upnd":         payload.upnd_votes,
+        "other":        payload.other_votes,
+        "rejected":     payload.rejected_ballots,
+        "agent":        payload.agent_name,
+        "notes":        payload.notes,
+    })
+    await db.commit()
+
+    return {
+        "status":       "ok",
+        "discrepancy":  discrepancy,
+        "registered":   station["total"],
+        "votes_cast":   payload.votes_cast,
+        "message":      "DISCREPANCY FLAGGED — votes exceed registered voters" if discrepancy else "Result recorded",
+    }
+
+
+@app.get("/api/tabulation/overview")
+async def tabulation_overview(db: AsyncSession = Depends(get_db)):
+    """High-level parallel tabulation coverage and discrepancy report."""
+    r = await db.execute(text("""
+        SELECT
+            COUNT(*)                                                      AS total_submitted,
+            SUM(registered_voters)                                        AS registered_in_submitted,
+            SUM(votes_cast)                                               AS total_votes_cast,
+            SUM(pf_votes)                                                 AS total_pf,
+            SUM(upnd_votes)                                               AS total_upnd,
+            SUM(other_votes)                                              AS total_other,
+            SUM(rejected_ballots)                                         AS total_rejected,
+            SUM(CASE WHEN votes_cast > registered_voters THEN 1 ELSE 0 END) AS discrepancy_count
+        FROM tabulation_results
+    """))
+    overview = dict(r.mappings().one())
+
+    discrepancies_r = await db.execute(text("""
+        SELECT tr.polling_district_code, tr.polling_station,
+               tr.constituency_name, tr.district_name, tr.province_name,
+               tr.registered_voters, tr.votes_cast,
+               tr.votes_cast - tr.registered_voters AS excess,
+               tr.agent_name, tr.submitted_at
+        FROM tabulation_results tr
+        WHERE tr.votes_cast > tr.registered_voters
+        ORDER BY (tr.votes_cast - tr.registered_voters) DESC
+        LIMIT 50
+    """))
+    discrepancies = [dict(r) for r in discrepancies_r.mappings()]
+
+    province_r = await db.execute(text("""
+        SELECT tr.province_name,
+               COUNT(*)    AS submitted,
+               SUM(CASE WHEN tr.votes_cast > tr.registered_voters THEN 1 ELSE 0 END) AS flags
+        FROM tabulation_results tr
+        GROUP BY tr.province_name
+        ORDER BY tr.province_name
+    """))
+    by_province = [dict(r) for r in province_r.mappings()]
+
+    total_stations_r = await db.execute(text("SELECT COUNT(*) FROM voter_register"))
+    total_stations = total_stations_r.scalar()
+
+    return {
+        "total_stations":   total_stations,
+        "overview":         overview,
+        "by_province":      by_province,
+        "discrepancies":    discrepancies,
+    }
+
+
+@app.get("/api/tabulation/discrepancies")
+async def tabulation_discrepancies(db: AsyncSession = Depends(get_db)):
+    r = await db.execute(text("""
+        SELECT tr.polling_district_code, tr.polling_station,
+               tr.ward_code, tr.constituency_name, tr.district_name, tr.province_name,
+               tr.registered_voters, tr.votes_cast,
+               tr.pf_votes, tr.upnd_votes, tr.other_votes, tr.rejected_ballots,
+               tr.votes_cast - tr.registered_voters AS excess,
+               tr.agent_name, tr.notes, tr.submitted_at
+        FROM tabulation_results tr
+        WHERE tr.votes_cast > tr.registered_voters
+        ORDER BY (tr.votes_cast - tr.registered_voters) DESC
+    """))
+    return [dict(r) for r in r.mappings()]
 
 
 # ── Health check ─────────────────────────────────────────────

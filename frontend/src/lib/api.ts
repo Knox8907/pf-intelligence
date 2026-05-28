@@ -81,3 +81,68 @@ export async function submitPollResponse(payload: {
   }
   return res.json();
 }
+
+// ── Vote Protection ────────────────────────────────────────────
+
+export function useVoterRegisterSummary() {
+  return useSWR("/api/voter-register/summary", fetcher, { refreshInterval: 30_000 });
+}
+
+export function useDistricts(provinceNum: string | null) {
+  return useSWR(
+    provinceNum ? `/api/voter-register/districts?province_num=${provinceNum}` : null,
+    fetcher
+  );
+}
+
+export function useConstituencies(districtCode: string | null) {
+  return useSWR(
+    districtCode ? `/api/voter-register/constituencies?district_code=${districtCode}` : null,
+    fetcher
+  );
+}
+
+export function useWards(constituencyNum: string | null) {
+  return useSWR(
+    constituencyNum ? `/api/voter-register/wards?constituency_num=${constituencyNum}` : null,
+    fetcher
+  );
+}
+
+export function usePollingStations(wardCode: string | null) {
+  return useSWR(
+    wardCode ? `/api/voter-register/polling-stations?ward_code=${wardCode}` : null,
+    fetcher,
+    { refreshInterval: 15_000 }
+  );
+}
+
+export function useTabulationOverview() {
+  return useSWR("/api/tabulation/overview", fetcher, { refreshInterval: 15_000 });
+}
+
+export async function submitTabulation(payload: {
+  polling_district_code: string;
+  votes_cast: number;
+  pf_votes?: number;
+  upnd_votes?: number;
+  other_votes?: number;
+  rejected_ballots?: number;
+  agent_name?: string;
+  notes?: string;
+}) {
+  const token = getToken();
+  const res = await fetch("/api/tabulation/submit", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to submit tabulation");
+  }
+  return res.json();
+}

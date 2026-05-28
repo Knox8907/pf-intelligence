@@ -143,3 +143,51 @@ class ProvinceScore(Base):
     neg_pct      = Column(Float, default=0.0)
     top_issue    = Column(String(100), nullable=True)
     recorded_at  = Column(DateTime, default=datetime.utcnow)
+
+
+class VoterStation(Base):
+    """ECZ official registered voters per polling station — 2026 election."""
+    __tablename__ = "voter_register"
+    __table_args__ = {"extend_existing": True}
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    province_num          = Column(String(5),   nullable=False, index=True)
+    province_name         = Column(String(100), nullable=False)
+    district_code         = Column(String(10),  nullable=False, index=True)
+    district_name         = Column(String(100), nullable=False)
+    constituency_num      = Column(String(10),  nullable=False, index=True)
+    constituency_name     = Column(String(100), nullable=False)
+    ward_code             = Column(String(20),  nullable=False, index=True)
+    ward_name             = Column(String(100), nullable=False)
+    polling_district_code = Column(String(20),  nullable=False, index=True)
+    polling_district      = Column(String(150), nullable=False)
+    polling_station       = Column(String(200), nullable=False)
+    male                  = Column(Integer, nullable=False, default=0)
+    female                = Column(Integer, nullable=False, default=0)
+    total                 = Column(Integer, nullable=False, default=0)
+
+
+
+class TabulationResult(Base):
+    """Party parallel vote tabulation — one row per polling station, submitted by PF agent."""
+    __tablename__ = "tabulation_results"
+    __table_args__ = {"extend_existing": True}
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    polling_district_code = Column(String(20),  nullable=False, unique=True, index=True)
+    polling_station       = Column(String(200), nullable=False)
+    ward_code             = Column(String(20),  nullable=False)
+    constituency_name     = Column(String(100), nullable=False)
+    district_name         = Column(String(100), nullable=False)
+    province_name         = Column(String(100), nullable=False)
+    registered_voters     = Column(Integer, nullable=False)
+    votes_cast            = Column(Integer, nullable=True)
+    pf_votes              = Column(Integer, nullable=True)
+    upnd_votes            = Column(Integer, nullable=True)
+    other_votes           = Column(Integer, nullable=True)
+    rejected_ballots      = Column(Integer, nullable=True)
+    agent_name            = Column(String(200), nullable=True)
+    notes                 = Column(Text, nullable=True)
+    submitted_at          = Column(DateTime, default=datetime.utcnow)
+    is_verified           = Column(Boolean, default=False)
+
