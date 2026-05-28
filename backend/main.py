@@ -490,27 +490,34 @@ End with a clear, concrete PF pledge. Write in a direct, accessible voice — no
 
 @app.post("/api/generate-message")
 async def generate_message(payload: MessageGenerateRequest, _: str = Depends(require_auth)):
-    if not settings.ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+    if not settings.ANTHROPIC_API_KEY or settings.ANTHROPIC_API_KEY.startswith("sk-ant-YOUR"):
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured — add your key to backend/.env")
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     async def stream_text():
-        async with client.messages.stream(
-            model="claude-opus-4-7",
-            max_tokens=1024,
-            thinking={"type": "adaptive"},
-            system=_CAMPAIGN_SYSTEM,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Write a PF 2026 campaign message for voters in {payload.province} "
-                    f"province, focused on the issue of {payload.issue}."
-                ),
-            }],
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+        try:
+            async with client.messages.stream(
+                model="claude-opus-4-7",
+                max_tokens=1024,
+                thinking={"type": "adaptive"},
+                system=_CAMPAIGN_SYSTEM,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Write a PF 2026 campaign message for voters in {payload.province} "
+                        f"province, focused on the issue of {payload.issue}."
+                    ),
+                }],
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
+        except anthropic.AuthenticationError:
+            yield "\n[Error: Invalid Anthropic API key. Update ANTHROPIC_API_KEY in backend/.env]"
+        except anthropic.RateLimitError:
+            yield "\n[Error: Anthropic rate limit reached. Try again in a moment.]"
+        except Exception as e:
+            yield f"\n[Error: {str(e)}]"
 
     return StreamingResponse(stream_text(), media_type="text/plain")
 
