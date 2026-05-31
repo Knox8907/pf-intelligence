@@ -62,7 +62,7 @@ META_ACCESS_TOKEN=your_meta_graph_api_token
 META_APP_ID=your_app_id
 META_APP_SECRET=your_app_secret
 SECRET_KEY=your_jwt_secret_key_min_32_chars
-ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+ALLOWED_ORIGINS=https://politicalintelligence.com,https://www.politicalintelligence.com
 ```
 
 ### Frontend `.env.local`

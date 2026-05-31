@@ -237,7 +237,7 @@ The platform requires internet access. In areas with poor connectivity, the dash
 | Apply for Meta Business Account & App Review | Technical team | **Urgent** — takes 5–10 days; must start immediately |
 | Procure Anthropic API key (console.anthropic.com) | Technical team | Pending |
 | Set up DigitalOcean production server | Technical team | Ready to deploy — awaiting domain name |
-| Configure domain name + SSL (HTTPS) | Technical team | **Blocked** — domain name not yet decided |
+| Configure domain name + SSL (HTTPS) | Technical team | Domain: `politicalintelligence.com` — register then point A record to droplet IP |
 | Grant login credentials to campaign leadership | System administrator | Pending server deployment |
 | Create per-agent accounts for election day | Technical team | Pending — required before 13 August |
 | Begin laptop procurement | Finance/logistics | Pending |

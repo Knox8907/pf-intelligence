@@ -49,7 +49,7 @@ High-specification laptops for the intelligence analysts and campaign strategist
 
 | Item | Description | Cost (USD/yr) | Cost (ZMW/yr) |
 |---|---|---|---|
-| Domain Name (1 year) | `pfintelligence.zm` or `pfzambia2026.com` via Namecheap/GoDaddy | $15 | ZMW 420 |
+| Domain Name (1 year) | `politicalintelligence.com` via Namecheap/GoDaddy | $15 | ZMW 420 |
 | SSL Certificate | Let's Encrypt (auto-renewing) — **FREE** | $0 | ZMW 0 |
 | Microsoft 365 Business Basic (2 users) | Email, Teams, OneDrive for team collaboration | $72 | ZMW 2,016 |
 | GitHub Team (2 users) | Private repository, code review, CI/CD actions | $48 | ZMW 1,344 |
